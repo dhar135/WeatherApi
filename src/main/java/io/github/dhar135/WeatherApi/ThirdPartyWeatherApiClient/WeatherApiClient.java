@@ -4,13 +4,14 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.dhar135.WeatherApi.model.WeatherResponse;
 import lombok.Data;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.context.annotation.Bean;
 import org.springframework.stereotype.Component;
 
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 
 @Component
 @Data
@@ -22,30 +23,16 @@ public class WeatherApiClient {
     @Value("${API_BASE_URL}")
     private String baseUrl;
 
-    private HttpClient httpClient;
-    private ObjectMapper objectMapper;
+    private final HttpClient httpClient;
+    private final ObjectMapper objectMapper;
+    private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd");
 
     public WeatherApiClient(HttpClient httpClient, ObjectMapper objectMapper) {
         this.httpClient = httpClient;
         this.objectMapper = objectMapper;
     }
 
-    @Bean
-    public HttpClient getHttpClient() {
-        return HttpClient.newHttpClient();
-    }
-
     public WeatherResponse getForecast(String location, String date1, String date2) {
-        //  Location is the address, partial address or latitude, longitude location for which to retrieve weather data.
-        //  You can also use US ZIP Codes
-
-        // Date1 is the start date for which to retrieve weather data
-
-        // Date2 is the end date for which to retrieve weather data.
-
-        // Dates should be in the format yyyy-MM-dd.
-        // For example 2020-10-19 for October 19th, 2020 or 2017-02-03 for February 3rd, 2017.
-
         if (baseUrl == null || baseUrl.isEmpty()) {
             throw new RuntimeException("Base url not set");
         }
@@ -62,25 +49,41 @@ public class WeatherApiClient {
             throw new RuntimeException("Start date not set");
         }
 
-        // Date2 can be optional for some APIs, if it's required, uncomment the following:
-
         try {
-            // Construct the URL. The exact format depends on the third-party API.
-            // This is a common pattern: /location/date1/date2?key=apiKey
-            // Or: /location?date1=date1&date2=date2&key=apiKey
-            // Adjust the URI construction as per the API documentation.
-            String path = "/" + location + "/" + date1;
-            if (date2 != null && !date2.isEmpty()) {
-                path += "/" + date2;
+            // Format dates to yyyy-MM-dd format
+            String formattedDate1 = LocalDate.parse(date1, DateTimeFormatter.ofPattern("MM/dd/yyyy"))
+                    .format(DATE_FORMATTER);
+            String formattedDate2 = date2 != null ? LocalDate.parse(date2, DateTimeFormatter.ofPattern("MM/dd/yyyy"))
+                    .format(DATE_FORMATTER) : null;
+
+            // URL encode the location
+            String encodedLocation = java.net.URLEncoder.encode(location, java.nio.charset.StandardCharsets.UTF_8);
+
+            // Construct the URL according to Visual Crossing API format
+            String path = String.format("/%s/%s", encodedLocation, formattedDate1);
+            if (formattedDate2 != null) {
+                path += "/" + formattedDate2;
             }
 
+            URI uri = URI.create(this.baseUrl + path + "?key=" + apiKey);
+            System.out.println("Making request to: " + uri); // Debug log
+
             HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(this.baseUrl + path + "?key=" + apiKey))
+                    .uri(uri)
+                    .header("Accept", "application/json")
+                    .GET()
                     .build();
 
-            String jsonResponse = httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString())
-                    .thenApply(HttpResponse::body)
+            HttpResponse<String> response = httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString())
                     .join();
+
+            // Check HTTP status code
+            if (response.statusCode() != 200) {
+                throw new RuntimeException("API request failed with status code: " + response.statusCode() +
+                        ", Response: " + response.body());
+            }
+
+            String jsonResponse = response.body();
 
             return objectMapper.readValue(jsonResponse, WeatherResponse.class);
 
@@ -88,5 +91,4 @@ public class WeatherApiClient {
             throw new RuntimeException("Error fetching forecast: " + e.getMessage(), e);
         }
     }
-
 }
