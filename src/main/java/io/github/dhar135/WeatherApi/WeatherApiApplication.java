@@ -22,6 +22,7 @@ public class WeatherApiApplication {
 		FilterRegistrationBean<RateLimitingFilter> registration = new FilterRegistrationBean<>();
 		registration.setFilter(new RateLimitingFilter());
 		registration.addUrlPatterns("/api/weather/*");
+		registration.setOrder(1);
 		return registration;
 	}
 

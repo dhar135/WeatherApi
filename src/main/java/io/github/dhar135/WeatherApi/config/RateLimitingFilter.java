@@ -46,9 +46,10 @@ public class RateLimitingFilter implements Filter {
             return;
         }
 
-        // Reset request counts periodically
-        if (requests % MAX_REQUESTS_PER_MINUTE == 0) {
-            requestCounts.remove(ipAddress);
+        // Reset request counts periodically every minute
+        if (System.currentTimeMillis() - lastResetTime > 60000) {
+            requestCounts.clear();
+            lastResetTime = System.currentTimeMillis();
         }
 
         // Set the request count in the response header
